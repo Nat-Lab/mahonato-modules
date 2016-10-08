@@ -1,0 +1,29 @@
+tagImg() {
+	[[ -e /tmp/inet4.dead ]] && msg_send "这个服务暂时不可用。" && exit 0
+	case $MESSAGE in
+		'/konachan'*) server="https://konachan.com"; provider="konachan";;
+		'/yande'*) server="https://yande.re"; provider="yande";;
+		*) exit 0;;
+	esac
+	target=$(awk -F "/${provider}_tag " '{print $2}' <<< "$MESSAGE")
+	[[ ! -z $target ]] && {
+		log "imgTag request: server $server, query $target."
+		list=$(curl -s "$server/post.xml" -d "limit=100" -d "tags=$target" | awk -F"jpeg_url=\"" '{print $2}' | awk -F\" '{print $1}')
+		send="$(sed '1,2d;' <<< "$list" | shuf -n1)"
+		[[ -z $send ]] && send="没有抓到图。"
+ 		msg_send "$send"
+	} || msg_send "用法：/${provider}_tag <tag> [tag] ..."
+}
+randImg () {
+	[[ -e /tmp/inet4.dead ]] && msg_send "这个服务暂时不可用。" && exit 0
+	case $MESSAGE in
+		'/konachan'*) server="https://konachan.com"; provider="konachan"; cA=4; cB=2;;
+		'/yande'*) server="https://yande.re"; provider="yande"; cA=6; cB=4;;
+		*) exit 0;;
+	esac
+	log "imgRandom request: server $server."
+               res=$(curl -sL "$server/post/random")
+	url=$(grep -a 'original-file-unchanged' <<< "$res" | cut -d'"' -f$cA | head -n1) 
+	[[ -z $url ]] && url=$(grep 'og:image' <<< "$res" | cut -d'"' -f$cB) && log "no 'original-file-unchanged' available, using og:image."
+	[[ -z $url ]] && msg_send "拉不到图。" || msg_send "$url" 
+}

@@ -1,0 +1,17 @@
+# usage: distance location>location
+distance() {
+	[[ -e /tmp/inet4.dead ]] && echo "这个服务暂时不可用。" && return 0
+	_from=$(cut -d'>' -f1 <<< "$*")
+	_to=$(cut -d'>' -f2 <<< "$*")
+	[[ -z $_from || -z $_to ]] && echo "用法：/distance 地名>地名" && return 0
+	dres=$(curl -s "https://maps.googleapis.com/maps/api/distancematrix/json?origins=$_from&destinations=$_to&language=zh-CN&key=$gdapi" | ./JSON.sh)
+	log "query distance from $_from to $_to. "
+	status=$(grep --text '\["status"\]' <<< "$dres" | cut -d'"' -f4)
+	[[ ! $status == OK ]] && echo "出错了..." && return 0
+	distance="$(grep --text '\["rows",0,"elements",0,"distance","text"]' <<< "$dres" | cut -d'"' -f10)"
+	from="$(grep --text '\["origin_addresses",0\]' <<< "$dres" | cut -d'"' -f4)"
+	to="$(grep --text '\["destination_addresses",0\]' <<< "$dres" | cut -d'"' -f4)"
+	time="$(grep --text '\["rows",0,"elements",0,"duration","text"]' <<< "$dres" | cut -d'"' -f10)"
+	[[ -z $distance || -z $from || -z $to || -z $time ]] && echo "出错了..." && return 0
+	echo "从 $from 至 $to 长 ${distance}，预计驾车时长 ${time}。"
+}

@@ -1,0 +1,21 @@
+# osu_pp: oppai wrapper
+osu_pp() {
+	osu_err="这看起来不是一个 osu 文件的 URL。osu 文件的 URL 可以在谱面信息页面中的「Grab latest .osu file」里获得。"
+	url=$1
+	shift 1
+	[[ -z $url ]] && msg_send "用法：/osu_pp <.osu url> {[acc]% or [num_100s]x100 [num_50s]x50} +[mods] [combo]x [misses]m scorev[scoring_version]" && exit 0
+	log "osu_pp: request for $url, agrs: $*."
+	[[ ! $url == "https://osu.ppy.sh/osu/"* ]] && msg_send "$osu_err" && log "osu_pp: invalid osu url." && exit 0
+	file_id="$(cut -d"/" -f5 <<< "$url" | tr -d ' ./')"
+	log "osu_pp: file id is $file_id, let't do this."
+	#(! grep -vEq "[0-9]" <<< "$file_id") && msg_send "$osu_err" && log "osu_pp: invalid osu file id."  && exit 0
+	[[ ! -e "osu/$file_id.osu" ]] && {
+		[[ -e /tmp/inet4.dead ]] && msg_send "这个服务暂时不可用。" && exit 0
+		log "osu_pp: $file_id.osu no in cache, fetching."
+		curl -s "$url" > "osu/$file_id.osu"
+		[[ "$(wc -l < "osu/$file_id.osu")" -lt 1 ]] && rm "osu/$file_id.osu" && log "osu_pp: invalid osu file." 
+	}
+	[[ -e "osu/$file_id.osu" ]] && msg_send "$(./oppai - $* < "osu/$file_id.osu" | sed -e '1,11d')" || msg_send "$osu_err"
+	exit 0
+}
+
