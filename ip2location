@@ -1,0 +1,38 @@
+#!/bin/bash
+
+BAIDU_API=''
+
+valid_ip() {
+	local  ip=$1
+	local  stat=1
+
+	if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+		OIFS=$IFS
+		IFS='.'
+		ip=($ip)
+		IFS=$OIFS
+		[[ ${ip[0]} -le 255 && ${ip[1]} -le 255 \
+			&& ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
+		stat=$?
+	fi
+	return $stat
+}
+
+getLocationByIP() {
+
+	[[ -z "$1" ]] && echo "用法：/ip2location <IP>" && return 1
+
+	(valid_ip $1) && {
+		respond="$(curl -s "https://api.map.baidu.com/highacciploc/v1?qcip=${1}&qterm=pc&extensions=3&ak=${BAIDU_API}")"
+		json_style="$(./JSON.sh <<< "$respond")"
+		possible_locations="$(grep -E '\["content","formatted_address"\]|\["content","pois",[0-9]*,"name"\]' <<< "$json_style" | cut -f2 | tr -d '"')"
+		loc="$(grep -E '\["content","location"\]' <<< "$json_style" | cut -f2 | tr -d '"{}' | sed -e 's/lat:/经度：/; s/lng:/纬度：/; s/,/，/;')"
+		[[ ! -z $loc ]] && echo "${1}，${loc}。"
+		[[ ! -z $possible_locations ]] && echo -e "可能的位置：\n${possible_locations}"
+		[[ -z $loc && -z $possible_locations ]] && echo "查询错误。"
+		return 0
+	} || echo "无效的 IP 地址。"
+
+}
+
+getLocationByIP $*
