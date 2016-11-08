@@ -4,18 +4,45 @@ WIKI_PREFIX='en sv ceb de nl fr ru it es war pl vi ja pt zh uk ca fa no ar sh fi
 
 wiki() {
 
-	(! grep -qE "$1" <<< "$(tr ' ' '\n' <<< "$WIKI_PREFIX")") && {
-		echo "不存在的语言。"
-		return
-	}
+        [[ -e /tmp/inet4.dead ]] && echo "这个服务暂时不可用。" && return
+ 
+        [[ -z $2 ]] && echo "用法：/wiki <语言> <条目>" && return
 
-	respond="$(curl -s "https://$1.wikipedia.org/w/api.php?format=json&action=query&prop=extracts&exintro=&explaintext=&titles=$2" \
-		| jq ".query .pages [] .extract" \
-		| tr -d '\\n' \
-		| sed -e 's/^"//; s/"$//;')"
+        (! grep -qE "$1" <<< "$(tr ' ' '\n' <<< "$WIKI_PREFIX")") && {
+                echo "不存在的语言。"
+                return
+        }
 
-	[[ -z $respond ]] && echo "找不到条目。" || echo "$respond"
+        lng=$1
+        shift 1
 
+        respond="$(curl -s "https://$lng.wikipedia.org/w/api.php?format=json&action=query&prop=extracts&exintro=&explaintext=&titles=$*" \
+                | jq ".query .pages [] .extract" \
+                | tr -d '\\n' \
+                | sed -e 's/^"//; s/"$//;')"
+
+	[[ ${#respond} -lt 5 ]] && echo "找不到条目。" && return 
+
+        [[ ! -z $respond ]] && echo "$respond" && return
+                        
+        # not found? try see if there are REDIRECT.
+ 
+        respond="$(curl -s "https://$lng.wikipedia.org/w/api.php?format=json&action=query&prop=revisions&rvprop=content&titles=$*" \
+                | jq ".query .pages [] .revisions [] .\"*\"")" 
+ 
+        [[ "$respond" == '"#REDIRECT[['* ]] && redir="$(cut -d'[' -f3 <<< "$respond" | cut -d']' -f1)" || {
+                echo "找不到条目。"
+                return
+        }
+
+        respond="$(curl -s "https://$lng.wikipedia.org/w/api.php?format=json&action=query&prop=extracts&exintro=&explaintext=&titles=$redir" \
+                | jq ".query .pages [] .extract" \
+                | tr -d '\\n' \
+                | sed -e 's/^"//; s/"$//;')"
+                
+        echo "$* => $redir
+$respond"
+        
 }
 
 wiki $*
