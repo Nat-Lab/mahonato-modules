@@ -1,0 +1,64 @@
+#!/bin/bash
+
+function bgp {
+  api='https://api.bgpview.io/' verb="$1" query="$2"
+  case $verb in
+    'asn') act=asn verb="asn/$query";;
+    'asn_prefixes'|'asn_prefix') act=prefix verb="asn/$query/prefixes";;
+    'asn_peer'|'asn_peers') act=peer verb="asn/$query/peers";;
+    'ip') local act=ip verb="ip/$query";;
+    *) echo "用法：/bgp <verb> <query>，verb 可以是：asn, asn_prefix, asn_peer, ip。" && exit 1 
+  esac
+
+  curl -s --max-time 5 "$api$verb" | {
+    res="$(cat)"
+    [ -z "$res" ] && echo "查询时发生错误。" && exit 1
+    jq -r '.status' <<< "$res" | {
+      read status
+      [ $status != ok ] && echo "查询时发生错误。" && exit 1
+    }
+    jq -rc '.data' <<< "$res" | {
+      case $act in
+        asn) 
+          jq -cr '.asn, .name, .description_short, .country_code' | {
+            read asn; read name; read desc; read cc
+            echo "AS${asn} ${name} (${desc}) (${cc})"
+          }
+        ;;
+        prefix)
+          jq -cr '.ipv4_prefixes, .ipv6_prefixes | 
+                  .[] | 
+                  .prefix, .name, .description, .country_code' \
+            | while read prefix; do {
+              read name; read desc; read cc
+              echo "${prefix} ${name} (${desc}) (${cc})"
+            }; done
+        ;;
+        peer)
+          jq -cr '.ipv4_peers, .ipv6_peers' | {
+            read v4; read v6
+            for ptr in v4 v6; do {
+              eval "data=\$$ptr"
+              jq -cr '.[] | .asn, .name, .description, .country_code' <<< "$data" | \
+              while read asn; do {
+                read name; read desc; read cc
+                echo "${asn} ${name} (${desc}) (${cc}) IP${ptr}"
+              }; done
+            }; done
+          }
+        ;;
+        ip) 
+          jq -cr '.ip, .ptr_record, .prefixes' | while read ip; do {
+            read ptr; read pfx
+            echo "$ip ($ptr)"
+            jq -cr '.[] | .prefix, .name, .description, .country_code, .asn .asn, .asn .description' <<< "$pfx" | \
+            while read prefix; do {
+              read name; read desc; read cc; read asn; read as_desc;
+              echo "${prefix} ${name} (${desc}) ($cc) from AS${asn} (${as_desc})"
+            }; done
+          }; done 
+        ;;
+      esac
+    }
+  } 
+}
